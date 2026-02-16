@@ -23,6 +23,9 @@
 #elif defined __ANDROID__
 	#define RMLUI_SHADER_HEADER_VERSION "#version 300 es\nprecision highp float;\n"
 	#include <GLES3/gl3.h>
+#elif defined __IOS__
+	#define RMLUI_SHADER_HEADER_VERSION "#version 300 es\nprecision highp float;\n"
+	#include <OpenGLES/ES3/gl.h>
 #elif defined RMLUI_GL3_CUSTOM_LOADER
 	#define RMLUI_SHADER_HEADER_VERSION "#version 330\n"
 	#include RMLUI_GL3_CUSTOM_LOADER
@@ -593,7 +596,7 @@ static bool CreateProgram(GLuint& out_program, Uniforms& inout_uniform_map, Prog
 static bool CreateFramebuffer(FramebufferData& out_fb, int width, int height, int samples, FramebufferAttachment attachment,
 	GLuint shared_depth_stencil_buffer)
 {
-#if defined(RMLUI_PLATFORM_EMSCRIPTEN) || defined(__ANDROID__)
+#if defined(RMLUI_PLATFORM_EMSCRIPTEN) || defined(__ANDROID__) || defined(__IOS__)
 	constexpr GLint wrap_mode = GL_CLAMP_TO_EDGE;
 #else
 	constexpr GLint wrap_mode = GL_CLAMP_TO_BORDER; // GL_REPEAT GL_MIRRORED_REPEAT GL_CLAMP_TO_EDGE
@@ -602,6 +605,11 @@ static bool CreateFramebuffer(FramebufferData& out_fb, int width, int height, in
 	constexpr GLenum color_format = GL_RGBA8;   // GL_RGBA8 GL_SRGB8_ALPHA8 GL_RGBA16F
 	constexpr GLint min_mag_filter = GL_LINEAR; // GL_NEAREST
 	const Rml::Colourf border_color(0.f, 0.f);
+
+	// Save the currently bound framebuffer so we can restore it after setup.
+	// On iOS, the default framebuffer is NOT 0 (it is managed by UIKit/SDL).
+	GLint prev_framebuffer = 0;
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_framebuffer);
 
 	GLuint framebuffer = 0;
 	glGenFramebuffers(1, &framebuffer);
@@ -626,7 +634,7 @@ static bool CreateFramebuffer(FramebufferData& out_fb, int width, int height, in
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, min_mag_filter);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_mode);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_mode);
-#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__)
+#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(__IOS__)
 		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, &border_color[0]);
 #endif
 
@@ -661,7 +669,7 @@ static bool CreateFramebuffer(FramebufferData& out_fb, int width, int height, in
 		return false;
 	}
 
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, prev_framebuffer);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
@@ -821,6 +829,8 @@ void RenderInterface_GL3::BeginFrame()
 	glstate_backup.enable_scissor_test = glIsEnabled(GL_SCISSOR_TEST);
 	glstate_backup.enable_depth_test = glIsEnabled(GL_DEPTH_TEST);
 
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &glstate_backup.framebuffer_binding);
+
 	glGetIntegerv(GL_VIEWPORT, glstate_backup.viewport);
 	glGetIntegerv(GL_SCISSOR_BOX, glstate_backup.scissor);
 
@@ -869,7 +879,7 @@ void RenderInterface_GL3::BeginFrame()
 	glBlendEquation(GL_FUNC_ADD);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__)
+#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(__IOS__)
 	// We do blending in nonlinear sRGB space because that is the common practice and gives results that we are used to.
 	glDisable(GL_FRAMEBUFFER_SRGB);
 #endif
@@ -905,8 +915,9 @@ void RenderInterface_GL3::EndFrame()
 
 	glBlitFramebuffer(0, 0, fb_active.width, fb_active.height, 0, 0, fb_postprocess.width, fb_postprocess.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-	// Draw to backbuffer
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	// Draw to backbuffer (restore the framebuffer that was active before BeginFrame;
+	// on iOS the default framebuffer is NOT 0 but a UIKit-managed FBO).
+	glBindFramebuffer(GL_FRAMEBUFFER, glstate_backup.framebuffer_binding);
 	glViewport(viewport_offset_x, viewport_offset_y, viewport_width, viewport_height);
 
 	// Assuming we have an opaque background, we can just write to it with the premultiplied alpha blend mode and we'll get the correct result.
@@ -2144,7 +2155,7 @@ bool RmlGL3::Initialize(Rml::String* out_message)
 #if defined(RMLUI_PLATFORM_EMSCRIPTEN)
 	if (out_message)
 		*out_message = "Started Emscripten WebGL renderer.";
-#elif defined(__ANDROID__)
+#elif defined(__ANDROID__) || defined(__IOS__)
 	if (out_message)
 		*out_message = "Started OpenGL ES 3 renderer.";
 #elif !defined RMLUI_GL3_CUSTOM_LOADER
@@ -2165,7 +2176,7 @@ bool RmlGL3::Initialize(Rml::String* out_message)
 
 void RmlGL3::Shutdown()
 {
-#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(RMLUI_GL3_CUSTOM_LOADER)
+#if !defined(RMLUI_PLATFORM_EMSCRIPTEN) && !defined(__ANDROID__) && !defined(__IOS__) && !defined(RMLUI_GL3_CUSTOM_LOADER)
 	gladLoaderUnloadGL();
 #endif
 }

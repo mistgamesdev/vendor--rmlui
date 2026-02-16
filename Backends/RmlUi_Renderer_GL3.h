@@ -165,6 +165,8 @@ private:
 		bool enable_scissor_test;
 		bool enable_depth_test;
 
+		int framebuffer_binding;
+
 		int viewport[4];
 		int scissor[4];
 
