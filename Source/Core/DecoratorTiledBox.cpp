@@ -168,39 +168,49 @@ DecoratorDataHandle DecoratorTiledBox::GenerateElementData(Element* element, Box
 	const ComputedValues& computed = element->GetComputedValues();
 	Mesh mesh[COUNT];
 
-	// Generate the geometry for the top-left tile.
-	tiles[TOP_LEFT_CORNER].GenerateGeometry(mesh[tiles[TOP_LEFT_CORNER].texture_index], computed, offset, top_left, top_left);
-	// Generate the geometry for the top edge tiles.
-	tiles[TOP_EDGE].GenerateGeometry(mesh[tiles[TOP_EDGE].texture_index], computed, offset + Vector2f(top_left.x, 0),
-		Vector2f(size.x - (top_left.x + top_right.x), top.y), top);
-	// Generate the geometry for the top-right tile.
-	tiles[TOP_RIGHT_CORNER].GenerateGeometry(mesh[tiles[TOP_RIGHT_CORNER].texture_index], computed, offset + Vector2f(size.x - top_right.x, 0),
-		top_right, top_right);
+	// Small overlap (in pixels) applied to the inner edges of each tile to prevent sub-pixel gaps between tiles.
+	// The 9 tiles are rendered as separate draw calls, and certain GPU rasterizers (particularly on mobile devices)
+	// may not perfectly align adjacent triangle edges, causing visible seam lines where the background bleeds through.
+	// By expanding each tile's inner edges by a small amount, adjacent tiles overlap slightly, hiding any gaps.
+	const float s = 0.5f;
 
-	// Generate the geometry for the left side.
-	tiles[LEFT_EDGE].GenerateGeometry(mesh[tiles[LEFT_EDGE].texture_index], computed, offset + Vector2f(0, top_left.y),
-		Vector2f(left.x, size.y - (top_left.y + bottom_left.y)), left);
+	// Generate the geometry for the top-left tile (expand right and bottom inner edges).
+	tiles[TOP_LEFT_CORNER].GenerateGeometry(mesh[tiles[TOP_LEFT_CORNER].texture_index], computed, offset,
+		Vector2f(top_left.x + s, top_left.y + s), top_left);
+	// Generate the geometry for the top edge tiles (expand left, right, and bottom inner edges).
+	tiles[TOP_EDGE].GenerateGeometry(mesh[tiles[TOP_EDGE].texture_index], computed, offset + Vector2f(top_left.x - s, 0),
+		Vector2f(size.x - (top_left.x + top_right.x) + 2 * s, top.y + s), top);
+	// Generate the geometry for the top-right tile (expand left and bottom inner edges).
+	tiles[TOP_RIGHT_CORNER].GenerateGeometry(mesh[tiles[TOP_RIGHT_CORNER].texture_index], computed,
+		offset + Vector2f(size.x - top_right.x - s, 0), Vector2f(top_right.x + s, top_right.y + s), top_right);
 
-	// Generate the geometry for the right side.
-	tiles[RIGHT_EDGE].GenerateGeometry(mesh[tiles[RIGHT_EDGE].texture_index], computed, offset + Vector2f((size.x - right.x), top_right.y),
-		Vector2f(right.x, size.y - (top_right.y + bottom_right.y)), right);
+	// Generate the geometry for the left side (expand top, right, and bottom inner edges).
+	tiles[LEFT_EDGE].GenerateGeometry(mesh[tiles[LEFT_EDGE].texture_index], computed, offset + Vector2f(0, top_left.y - s),
+		Vector2f(left.x + s, size.y - (top_left.y + bottom_left.y) + 2 * s), left);
 
-	// Generate the geometry for the bottom-left tile.
-	tiles[BOTTOM_LEFT_CORNER].GenerateGeometry(mesh[tiles[BOTTOM_LEFT_CORNER].texture_index], computed, offset + Vector2f(0, size.y - bottom_left.y),
-		bottom_left, bottom_left);
-	// Generate the geometry for the bottom edge tiles.
-	tiles[BOTTOM_EDGE].GenerateGeometry(mesh[tiles[BOTTOM_EDGE].texture_index], computed, offset + Vector2f(bottom_left.x, size.y - bottom.y),
-		Vector2f(size.x - (bottom_left.x + bottom_right.x), bottom.y), bottom);
-	// Generate the geometry for the bottom-right tile.
+	// Generate the geometry for the right side (expand top, left, and bottom inner edges).
+	tiles[RIGHT_EDGE].GenerateGeometry(mesh[tiles[RIGHT_EDGE].texture_index], computed,
+		offset + Vector2f(size.x - right.x - s, top_right.y - s),
+		Vector2f(right.x + s, size.y - (top_right.y + bottom_right.y) + 2 * s), right);
+
+	// Generate the geometry for the bottom-left tile (expand top and right inner edges).
+	tiles[BOTTOM_LEFT_CORNER].GenerateGeometry(mesh[tiles[BOTTOM_LEFT_CORNER].texture_index], computed,
+		offset + Vector2f(0, size.y - bottom_left.y - s), Vector2f(bottom_left.x + s, bottom_left.y + s), bottom_left);
+	// Generate the geometry for the bottom edge tiles (expand left, right, and top inner edges).
+	tiles[BOTTOM_EDGE].GenerateGeometry(mesh[tiles[BOTTOM_EDGE].texture_index], computed,
+		offset + Vector2f(bottom_left.x - s, size.y - bottom.y - s),
+		Vector2f(size.x - (bottom_left.x + bottom_right.x) + 2 * s, bottom.y + s), bottom);
+	// Generate the geometry for the bottom-right tile (expand top and left inner edges).
 	tiles[BOTTOM_RIGHT_CORNER].GenerateGeometry(mesh[tiles[BOTTOM_RIGHT_CORNER].texture_index], computed,
-		offset + Vector2f(size.x - bottom_right.x, size.y - bottom_right.y), bottom_right, bottom_right);
+		offset + Vector2f(size.x - bottom_right.x - s, size.y - bottom_right.y - s),
+		Vector2f(bottom_right.x + s, bottom_right.y + s), bottom_right);
 
-	// Generate the centre geometry.
+	// Generate the centre geometry (expand all inner edges).
 	Vector2f centre_dimensions = tiles[CENTRE].GetNaturalDimensions(element);
-	Vector2f centre_surface_dimensions(size.x - (left.x + right.x), size.y - (top.y + bottom.y));
+	Vector2f centre_surface_dimensions(size.x - (left.x + right.x) + 2 * s, size.y - (top.y + bottom.y) + 2 * s);
 
-	tiles[CENTRE].GenerateGeometry(mesh[tiles[CENTRE].texture_index], computed, offset + Vector2f(left.x, top.y), centre_surface_dimensions,
-		centre_dimensions);
+	tiles[CENTRE].GenerateGeometry(mesh[tiles[CENTRE].texture_index], computed, offset + Vector2f(left.x - s, top.y - s),
+		centre_surface_dimensions, centre_dimensions);
 
 	const int num_textures = GetNumTextures();
 	DecoratorTiledBoxData* data = new DecoratorTiledBoxData(num_textures);
